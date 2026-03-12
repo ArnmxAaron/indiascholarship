@@ -1,10 +1,12 @@
 "use client";
 
 import React from 'react';
-import { GraduationCap, ArrowRight, BookOpen, Music, ShieldCheck, AlertCircle, Bell } from 'lucide-react';
+import { GraduationCap, ArrowRight, BookOpen, Music, ShieldCheck, AlertCircle, Bell, MessageCircle } from 'lucide-react';
 import Link from 'next/link';
 
 export default function Home() {
+  const whatsappUrl = "https://whatsapp.com/channel/0029Va9Vt96EKyZDUcmikv1F";
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900 font-sans">
       {/* 1. ANIMATION STYLE */}
@@ -61,7 +63,7 @@ export default function Home() {
 
       {/* 4. HERO SECTION */}
       <section className="py-12 px-6 text-center">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-3xl mx-auto flex flex-col items-center">
           <div className="inline-flex items-center gap-1 bg-blue-100 text-blue-700 px-3 py-1 rounded text-[10px] font-bold mb-4 uppercase tracking-wider">
             <ShieldCheck size={14} /> Verified Scholarship Assistance
           </div>
@@ -71,14 +73,34 @@ export default function Home() {
           <p className="text-base text-slate-600 mb-8 max-w-xl mx-auto">
             Professional ICCR scholarship processing for Undergraduate, Postgraduate, and PhD programs.
           </p>
-          <Link href="/apply" className="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold text-sm shadow-lg hover:bg-blue-700 transition inline-flex items-center gap-2">
-            PROCEED TO APPLY <ArrowRight size={16} />
-          </Link>
+          
+          <div className="flex flex-col items-center gap-6">
+            <Link href="/apply" className="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold text-sm shadow-lg hover:bg-blue-700 transition inline-flex items-center gap-2">
+              PROCEED TO APPLY <ArrowRight size={16} />
+            </Link>
+
+            {/* NEW FOLLOW SECTION */}
+            <div className="flex flex-col items-center gap-2">
+               <div className="flex items-center gap-2">
+                  <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+                  <span className="text-[11px] font-black text-slate-400 uppercase tracking-tighter">35,000+ Followers</span>
+               </div>
+               
+               <a 
+                href={whatsappUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="group flex items-center gap-2 bg-green-500 text-white px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-md hover:bg-green-600 transition-all animate-pulse active:scale-95"
+               >
+                 <MessageCircle size={14} fill="currentColor" />
+                 Follow Channel
+               </a>
+            </div>
+          </div>
         </div>
       </section>
 
       {/* 5. CARDS */}
-      
       <section className="py-10 px-6 max-w-7xl mx-auto">
         <div className="grid md:grid-cols-3 gap-6">
           <Card icon={<BookOpen size={20}/>} title="Undergraduate" desc="BA, BSc, BCom, B.Tech" />
