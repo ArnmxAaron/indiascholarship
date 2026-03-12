@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/utils/supabase';
-import { Send, User, MessageSquare, Loader2, LogOut, RefreshCw, Circle } from 'lucide-react';
+import { Send, User, MessageSquare, LogOut, RefreshCw, Circle } from 'lucide-react';
 
 export default function AdminDashboard() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -18,66 +18,19 @@ export default function AdminDashboard() {
   
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // --- 1. THE "SAFETY" REFRESH (Every 4 Seconds) ---
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    const interval = setInterval(() => {
-      fetchConversations(false);
-      if (selectedUser) refreshMessages(selectedUser);
-    }, 4000); 
-    return () => clearInterval(interval);
-  }, [isLoggedIn, selectedUser]);
-
-  // --- 2. REALTIME LISTENER ---
-  useEffect(() => {
-    if (!isLoggedIn) return;
-
-    const channel = supabase.channel('admin-main-view')
-      .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'messages' }, 
-        (payload) => {
-          fetchConversations(false);
-          if (selectedUser && payload.new.sender_id === selectedUser) {
-            setMessages(prev => [...prev, payload.new]);
-            // Auto-mark as read if we are currently looking at the chat
-            markAsRead(selectedUser);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [isLoggedIn, selectedUser]);
-
-  // --- 3. TYPING BROADCAST ---
-  const handleTyping = (isTyping: boolean) => {
-    if (!selectedUser) return;
-    supabase.channel('global_typing').send({
-      type: 'broadcast',
-      event: 'typing',
-      payload: { targetUserId: selectedUser, typing: isTyping },
-    });
-  };
-
-  const markAsRead = async (uid: string) => {
-    await supabase.from('messages')
-      .update({ status: 'read' })
-      .eq('sender_id', uid)
-      .eq('is_admin', false);
-  };
-
-  // --- DATA FETCHING (Fixed Unread Logic) ---
+  // --- 1. DATA FETCHING LOGIC ---
   const fetchConversations = async (showLoading = true) => {
     if (showLoading) setIsRefreshing(true);
-    const { data } = await supabase.from('messages').select('*').order('created_at', { ascending: false });
+    const { data } = await supabase
+      .from('messages')
+      .select('*')
+      .order('created_at', { ascending: false });
     
     if (data) {
       const userMap = new Map();
       data.forEach(msg => {
         if (!userMap.has(msg.sender_id)) {
-          // A conversation is UNREAD if the latest message is NOT from admin AND status is NOT 'read'
           const isActuallyUnread = !msg.is_admin && msg.status !== 'read';
-          
           userMap.set(msg.sender_id, {
             id: msg.sender_id,
             lastMsg: msg,
@@ -91,20 +44,85 @@ export default function AdminDashboard() {
   };
 
   const refreshMessages = async (uid: string) => {
-    const { data } = await supabase.from('messages').select('*').eq('sender_id', uid).order('created_at', { ascending: true });
-    if (data && data.length !== messages.length) {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('sender_id', uid)
+      .order('created_at', { ascending: true });
+    
+    if (!error && data) {
       setMessages(data);
     }
   };
 
-  useEffect(() => {
-    if (selectedUser && isLoggedIn) {
-      refreshMessages(selectedUser);
-      markAsRead(selectedUser).then(() => fetchConversations(false));
-    }
-  }, [selectedUser, isLoggedIn]);
+  const markAsRead = async (uid: string) => {
+    await supabase.from('messages')
+      .update({ status: 'read' })
+      .eq('sender_id', uid)
+      .eq('is_admin', false);
+  };
 
-  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  // --- 2. SELECTION HANDLER (Fixes the "Double Tap") ---
+  const handleSelectUser = async (uid: string) => {
+    if (selectedUser === uid) return;
+    
+    // Step 1: UI Feedback - clear current view so it feels like a fresh load
+    setMessages([]); 
+    setSelectedUser(uid);
+
+    // Step 2: Fetch and Update
+    await refreshMessages(uid);
+    await markAsRead(uid);
+    fetchConversations(false);
+  };
+
+  // --- 3. BACKGROUND SYNC (Interval) ---
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    fetchConversations(true); // Initial load
+
+    const interval = setInterval(() => {
+      fetchConversations(false);
+      if (selectedUser) refreshMessages(selectedUser);
+    }, 5000); 
+
+    return () => clearInterval(interval);
+  }, [isLoggedIn, selectedUser]);
+
+  // --- 4. REALTIME LISTENER ---
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const channel = supabase.channel('admin-updates')
+      .on('postgres_changes', 
+        { event: 'INSERT', schema: 'public', table: 'messages' }, 
+        (payload) => {
+          fetchConversations(false);
+          // Only append if the message belongs to the current open chat
+          if (selectedUser && payload.new.sender_id === selectedUser) {
+            setMessages(prev => {
+              // Prevent duplicate messages if interval and realtime hit at once
+              const exists = prev.find(m => m.id === payload.new.id);
+              return exists ? prev : [...prev, payload.new];
+            });
+            markAsRead(selectedUser);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [isLoggedIn, selectedUser]);
+
+  // --- 5. HELPERS ---
+  const handleTyping = (isTyping: boolean) => {
+    if (!selectedUser) return;
+    supabase.channel('global_typing').send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { targetUserId: selectedUser, typing: isTyping },
+    });
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,13 +154,18 @@ export default function AdminDashboard() {
     }
   };
 
+  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  // --- RENDER ---
   if (!isLoggedIn) return (
     <div className="flex h-screen items-center justify-center bg-[#F8FAFC]">
       <form onSubmit={handleLogin} className="bg-white p-10 rounded-3xl shadow-2xl w-full max-w-md border">
         <h1 className="text-2xl font-black text-slate-800 text-center mb-8 uppercase tracking-widest">Admin Login</h1>
         <input type="email" placeholder="EMAIL" className="w-full p-4 bg-slate-50 border-2 rounded-2xl mb-4 font-bold outline-none" onChange={e => setEmail(e.target.value)} />
         <input type="password" placeholder="PASSWORD" className="w-full p-4 bg-slate-50 border-2 rounded-2xl mb-8 font-bold outline-none" onChange={e => setPassword(e.target.value)} />
-        <button className="w-full bg-black text-white py-4 rounded-2xl font-black hover:bg-blue-600 transition-all uppercase">Login</button>
+        <button disabled={loading} className="w-full bg-black text-white py-4 rounded-2xl font-black hover:bg-blue-600 transition-all uppercase flex items-center justify-center">
+          {loading ? "Logging in..." : "Login"}
+        </button>
       </form>
     </div>
   );
@@ -167,10 +190,10 @@ export default function AdminDashboard() {
 
         <div className="flex-1 overflow-y-auto">
           {conversations.filter(c => activeTab === 'unread' ? c.isUnread : true).map((conv) => (
-            <div key={conv.id} onClick={() => setSelectedUser(conv.id)} className={`group p-5 border-b cursor-pointer transition-all relative ${selectedUser === conv.id ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
+            <div key={conv.id} onClick={() => handleSelectUser(conv.id)} className={`group p-5 border-b cursor-pointer transition-all relative ${selectedUser === conv.id ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
               {selectedUser === conv.id && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-600" />}
               <div className="flex justify-between items-start mb-1">
-                <span className="font-black text-[13px] text-slate-800 tracking-tight">USER #{conv.id}</span>
+                <span className="font-black text-[13px] text-slate-800 tracking-tight">USER #{conv.id.slice(0, 8)}</span>
                 {conv.isUnread && <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse" />}
               </div>
               <p className={`text-xs truncate ${conv.isUnread ? 'font-black text-slate-900' : 'text-slate-400 font-medium'}`}>{conv.lastMsg.text}</p>
@@ -198,13 +221,19 @@ export default function AdminDashboard() {
             </header>
 
             <main className="flex-1 overflow-y-auto p-10 space-y-6">
-              {messages.map((msg, i) => (
-                <div key={msg.id || i} className={`flex ${msg.is_admin ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[70%] p-4 rounded-2xl text-[14px] font-bold shadow-sm ${msg.is_admin ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 border rounded-tl-none'}`}>
-                    {msg.text}
-                  </div>
+              {messages.length === 0 ? (
+                <div className="flex justify-center items-center h-full text-slate-300">
+                   <p className="font-bold text-xs uppercase animate-pulse">Loading conversation...</p>
                 </div>
-              ))}
+              ) : (
+                messages.map((msg, i) => (
+                  <div key={msg.id || i} className={`flex ${msg.is_admin ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[70%] p-4 rounded-2xl text-[14px] font-bold shadow-sm ${msg.is_admin ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 border rounded-tl-none'}`}>
+                      {msg.text}
+                    </div>
+                  </div>
+                ))
+              )}
               <div ref={scrollRef} />
             </main>
 

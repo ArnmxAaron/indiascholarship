@@ -29,6 +29,15 @@ export default function ChatContent() {
     setUserId(storedId);
   }, [searchParams]);
 
+  // --- NEW: Function to clear the count ---
+  const markAsRead = async (uid: string) => {
+    await supabase
+      .from('messages')
+      .update({ status: 'read' })
+      .eq('sender_id', uid)
+      .eq('is_admin', true);
+  };
+
   // 2. Data Fetching & Realtime Listeners
   useEffect(() => {
     if (!userId) return;
@@ -43,6 +52,8 @@ export default function ChatContent() {
     };
 
     fetchMessages();
+    markAsRead(userId); // Clear count immediately on load
+
     const interval = setInterval(fetchMessages, 4000);
 
     const msgChannel = supabase.channel(`user_messages_${userId}`)
@@ -57,7 +68,11 @@ export default function ChatContent() {
           if (exists) return prev;
           return [...prev, payload.new];
         });
-        if (payload.new.is_admin) setIsAdminTyping(false);
+        
+        if (payload.new.is_admin) {
+          setIsAdminTyping(false);
+          markAsRead(userId); // Clear count if a new message arrives while chat is open
+        }
       })
       .subscribe();
 
