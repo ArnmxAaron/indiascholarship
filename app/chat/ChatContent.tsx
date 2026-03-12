@@ -15,12 +15,10 @@ export default function ChatContent() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom
   useEffect(() => { 
     scrollRef.current?.scrollIntoView({ behavior: "smooth" }); 
   }, [messages, isAdminTyping]);
 
-  // 1. Identity Setup
   useEffect(() => {
     const storedId = localStorage.getItem('supporter_id') || 
                      searchParams.get('id') || 
@@ -29,7 +27,6 @@ export default function ChatContent() {
     setUserId(storedId);
   }, [searchParams]);
 
-  // --- NEW: Function to clear the count ---
   const markAsRead = async (uid: string) => {
     await supabase
       .from('messages')
@@ -38,7 +35,6 @@ export default function ChatContent() {
       .eq('is_admin', true);
   };
 
-  // 2. Data Fetching & Realtime Listeners
   useEffect(() => {
     if (!userId) return;
 
@@ -52,10 +48,11 @@ export default function ChatContent() {
     };
 
     fetchMessages();
-    markAsRead(userId); // Clear count immediately on load
+    markAsRead(userId);
 
     const interval = setInterval(fetchMessages, 4000);
 
+    // MESSAGE LISTENER
     const msgChannel = supabase.channel(`user_messages_${userId}`)
       .on('postgres_changes', { 
         event: 'INSERT', 
@@ -70,14 +67,16 @@ export default function ChatContent() {
         });
         
         if (payload.new.is_admin) {
-          setIsAdminTyping(false);
-          markAsRead(userId); // Clear count if a new message arrives while chat is open
+          setIsAdminTyping(false); // Admin sent message, stop typing indicator
+          markAsRead(userId);
         }
       })
       .subscribe();
 
+    // --- TYPING LISTENER RESTORED ---
     const typingChannel = supabase.channel('global_typing')
       .on('broadcast', { event: 'typing' }, ({ payload }) => { 
+        // Only show if the typing event is targeted at THIS user
         if (payload.targetUserId === userId) { 
           setIsAdminTyping(payload.typing); 
         } 
@@ -91,7 +90,6 @@ export default function ChatContent() {
     };
   }, [userId]);
 
-  // 3. Send Message
   const sendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!input.trim()) return;
@@ -121,10 +119,8 @@ export default function ChatContent() {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
-    
     const fileName = `${Date.now()}_${file.name}`;
     const { error: storageError } = await supabase.storage.from('ad').upload(fileName, file);
-    
     if (!storageError) {
       const { data } = supabase.storage.from('ad').getPublicUrl(fileName);
       await supabase.from('messages').insert([{ 
@@ -163,9 +159,17 @@ export default function ChatContent() {
           </div>
         ))}
 
+        {/* RESTORED TYPING INDICATOR UI */}
         {isAdminTyping && (
-          <div className="text-[10px] text-blue-600 animate-pulse font-black px-2 mb-2 uppercase tracking-tight">
-            Admin is typing...
+          <div className="flex items-center gap-2 px-2 mb-2">
+            <div className="flex gap-1">
+              <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+              <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+              <span className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce"></span>
+            </div>
+            <span className="text-[10px] text-blue-600 font-black uppercase tracking-tight">
+              Admin is typing...
+            </span>
           </div>
         )}
         
@@ -175,7 +179,6 @@ export default function ChatContent() {
       <footer className="flex-none bg-white p-4 border-t">
         <div className="flex gap-2 items-end">
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
-            
             <textarea 
               value={input} 
               rows={1}
@@ -189,20 +192,10 @@ export default function ChatContent() {
               placeholder="Type a message..." 
               className="flex-1 bg-slate-100 rounded-2xl py-3 px-5 text-sm font-bold outline-none border-2 border-transparent focus:border-blue-600 resize-none max-h-32 overflow-y-auto custom-scrollbar" 
             />
-
-            <button 
-              type="button" 
-              onClick={() => fileInputRef.current?.click()} 
-              className="text-slate-500 hover:text-blue-600 transition mb-2"
-            >
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="text-slate-500 hover:text-blue-600 transition mb-2">
               {uploading ? <Loader2 className="animate-spin" size={22} /> : <ImageIcon size={22} />}
             </button>
-
-            <button 
-              onClick={() => sendMessage()}
-              disabled={!input.trim()}
-              className="bg-black text-white p-3 rounded-2xl hover:bg-blue-600 transition mb-1 disabled:opacity-20"
-            >
+            <button onClick={() => sendMessage()} disabled={!input.trim()} className="bg-black text-white p-3 rounded-2xl hover:bg-blue-600 transition mb-1 disabled:opacity-20">
               <Send size={20} />
             </button>
          </div>
