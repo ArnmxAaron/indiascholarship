@@ -126,7 +126,7 @@ export default function ChatContent() {
     <div className="flex flex-col h-[100dvh] w-full max-w-2xl mx-auto bg-[#F8FAFC] overflow-hidden">
       <ChatHeader 
         isAdminTyping={isAdminTyping} 
-        ADMIN_IMAGE_URL="https://aosqoqbsnrxcvbzaiwuu.supabase.co/storage/v1/object/public/ad/IMG_9718.JPG" 
+        ADMIN_IMAGE_URL="https://aosqoqbsnrxcvbzaiwuu.supabase.co/storage/v1/object/public/ad/ab639ce1-a9dc-4743-9df0-a2e92a0a3a6e%20(1).jpg" 
       />
       
       <main className="flex-1 overflow-y-auto p-4 space-y-4 overflow-x-hidden">
